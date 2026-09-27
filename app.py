@@ -1,161 +1,148 @@
 import streamlit as st
-
-from banco import criar_tabela, inserir_registro, listar_registro, excluir_registros
+from banco import (
+    criar_tabela,
+    inserir_registro,
+    listar_registro,
+    atualizar_devolucao,
+    excluir_registros
+)
 
 st.set_page_config(
-    page_title="Sistema de Empréstimo de Livros",
+    page_title="Registro de Empréstimo da Biblioteca",
     layout="wide"
 )
 
-st.title("Sistema de Empréstimo de Livros")
+st.title("Registro de Empréstimos da Biblioteca")
 
 criar_tabela()
 
-
-st.subheader("Registrar Novo Empréstimo de Livro")
+st.subheader("Registrar novo empréstimo de livro")
 
 with st.form("form_cadastro", clear_on_submit=True):
-
     col_a, col_b = st.columns(2)
 
-
-
     with col_a:
-       
-
-
         leitor = st.text_input("Leitor:")
-   
-
         genero = st.selectbox(
             "Gênero:",
-            ["Suspense", "Fantasia", "Terror", "Aventura", "Autobiografia", "Educativo", "Thriller", "Romance"]
+            ["Suspense", "Fantasia", "Terror", "Aventura", "Autobiografia", "Educativo", "Thriller", "Romance"],
+             index=None,
+             placeholder="Selecione o gênero do livro"
         )
-
-
-
         livro = st.selectbox(
-            
             "Livro:",
-            ["Céu e mar"]
-            )
- 
+            ["Céu e mar"],
+            index=None,
+            placeholder="Selecione o livro"
+        )
 
     with col_b:
-
-       
         devolucao = st.selectbox(
             "Devolvido?:",
-            ["Sim","Não"]
+            ["Sim", "Não"],
+            index=None,
+            placeholder="sim ou não"
         )
+        data = st.date_input("Data do Empréstimo:", format="DD/MM/YYYY")
 
-        data = st.date_input("Data do Empréstimo:")
-
- 
-       
-    enviado = st.form_submit_button("Salvar Registro")
-
+    enviado = st.form_submit_button("Salvar registro")
 
     if enviado:
-   
-
         if leitor.strip() == "" or livro.strip() == "":
-     
-            st.error("Preencha o leitor e o livro antes de salvar.")
-            # Exibe uma mensagem de erro para o usuário.
-
-
+            st.error("Preencha todos os campos antes de salvar.")
         else:
-            # Se vendedor e produto estiverem preenchidos,
-            # executa o cadastro.
-
-
             inserir_registro(
                 leitor,
                 genero,
                 livro,
                 devolucao,
-                str(data)
+                data.strftime("%d/%m/%Y")
             )
-
-            st.success(f"Empréstimo para { leitor} registrado com sucesso!")
-
-
+            st.success(f"Empréstimo para {leitor} registrado com sucesso!")
             st.rerun()
-
 
 st.divider()
 
-
-st.subheader(" Análise automática")
-
+st.subheader("Análise automática")
 
 df = listar_registro()
 
-
-if len(df) == 0:
-   
-
+if df.empty:
     st.info(
         "Nenhum empréstimo registrado ainda. "
         "Use o formulário acima para começar."
     )
-
 else:
-
     col1, col2, col3 = st.columns(3)
-   
-    total_livros_emprestados = df["id"].count
- 
     total_livros_emprestados = len(df)
 
-
     col1.metric(
-        "Total de Livros Empréstados",
-        f"{total_livros_emprestados:.2f}"
+        "Total de livros empréstados",
+        f"{total_livros_emprestados}"
     )
 
     grafico_leitor, grafico_genero = st.columns(2)
 
-
     with grafico_leitor:
-
-        st.write("**Total por Leitor**")
-   
-        total_por_leitor = df.groupby("leitor")["id"].value_counts
-
-        st.bar_chart(total_por_leitor)
+        st.write("**Total De livros por leitor**")
+        total_por_leitor = df.groupby("leitor")["id"].sum()
+        st.bar_chart(total_por_leitor,horizontal=True)
 
     with grafico_genero:
-     
-        st.write("**Total por Genero**")
-
-
-        total_por_genero = df.groupby("genero").count
-
-
+        st.write("**Total por gênero**")
+        total_por_genero = df.groupby("genero")["id"].count()
         st.bar_chart(total_por_genero)
 
-
-    st.subheader("Todas os empréstimos registrados")
-
+    st.subheader("Todos os empréstimos registrados")
     st.dataframe(df, use_container_width=True)
 
-    with st.expander(" Excluir uma registro"):
-
-        id_para_excluir = st.number_input(
-            "ID do registro a excluir:",
-            min_value=0,
-            step=1
-        )
-       
-
-        if st.button("Excluir"):
-           
-            excluir_registros(id_para_excluir)
-       
-            st.success(
-                f"Registro com id {id_para_excluir} excluído."
+   
+    with st.expander("Marcar livro como devolvido"):
+        pendentes = df[df["devolucao"] == "Não"]
+        if pendentes.empty:
+            st.success("Não há empréstimos pendentes no momento!")
+        else:
+            opcoes = {
+                f"ID {row['id']} - {row['leitor']} ({row['livro']})": row['id']
+                for _, row in pendentes.iterrows()
+            }
+            selecionado = st.selectbox(
+                "Selecione o empréstimo para registrar devolução:",
+                options=list(opcoes.keys())
             )
-           
-            st.rerun()
+            if st.button("Marcar como devolvido"):
+                id_selecionado = opcoes[selecionado]
+                atualizar_devolucao(id_selecionado, "Sim")
+                st.success(f"Empréstimo ID {id_selecionado} atualizado para 'Devolvido'!")
+                st.rerun()
+
+    
+    with st.expander("Excluir registos"):
+       registros_df = df
+
+       if registros_df.empty:
+        st.info("Não há empréstimos registrados para excluir!")
+
+       else:
+        opcoes_registros = {
+            f"ID {row['id']} - {row['leitor']} ({row['livro']})": row['id']
+            for _, row in registros_df.iterrows()
+        }
+
+        selecionados = st.multiselect(
+            "Selecione um ou mais registos para excluir:",
+            options=list(opcoes_registros.keys()), 
+            placeholder="Escolha os registos para excluir..."
+        )
+
+        if st.button("Excluir Seleção"):
+            if selecionados:
+                
+                for item in selecionados:
+                    id_para_excluir = opcoes_registros[item]
+                    excluir_registros(id_para_excluir)
+                
+                st.success(f"{len(selecionados)} registo(s) excluído(s) com sucesso.")
+                st.rerun()
+            else:
+                st.warning("Por favor, selecione pelo menos um registo antes de clicar em Excluir.")
